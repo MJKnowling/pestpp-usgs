@@ -17,6 +17,7 @@
 #include "ObjectiveFunc.h"
 #include "Localizer.h"
 #include "EnsembleMethodUtils.h"
+#include "constraints.h"
 
 
 
@@ -76,7 +77,7 @@ public:
 	void initialize();
 	void iterate_2_solution();
 	void finalize();
-	void throw_ies_error(string message);
+	void throw_sqp_error(string message);
 	bool should_terminate();
 
 private:
@@ -91,12 +92,17 @@ private:
 	L2PhiHandler ph;
 	ParChangeSummarizer pcs;
 	Covariance parcov, obscov;
-	double reg_factor;
+	chancePoints chancepoints;
+	string obj_func_str;
+	string obj_obs;
+	string obj_sense;
+	bool use_obj_obs;
+	map<string, double> obj_func_coef_map;
+	bool use_ensembles;
+
+	Jacobian_1to1 jco;
 
 	string base_name = "BASE"; //this is also defined in Ensemble
-
-	bool use_localizer;
-	Localizer localizer;
 
 	int num_threads;
 
@@ -105,44 +111,56 @@ private:
 	int iter,subset_size;
 	bool use_subset;
 
-	double last_best_lam, last_best_mean,last_best_std;
+	double last_best_mean,last_best_std;
 	vector<double> best_mean_phis;
 	double best_phi_yet;
 
-	int consec_bad_lambda_cycles;
-
-	double lambda_max, lambda_min;
 	int warn_min_reals, error_min_reals;
-	vector<double> lam_mults;
 	
 	vector<string> oe_org_real_names, pe_org_real_names;
 	vector<string> act_obs_names, act_par_names;
+	vector<string> dv_names;
 	vector<int> subset_idxs;
+	
+	Parameters current_pars;
+	Observations current_obs;
 
-	ParameterEnsemble pe, pe_base;
+	ParameterEnsemble dv, dv_base;
 	ObservationEnsemble oe, oe_base;
-	//Eigen::MatrixXd prior_pe_diff;
-	//Eigen::MatrixXd Am;
-	Eigen::DiagonalMatrix<double,Eigen::Dynamic> obscov_inv_sqrt, parcov_inv_sqrt;
 
-	bool oe_drawn, pe_drawn;
+	//these are used so that we can update the constraints based on the current best values
+	//Parameters best_mean_dv_values;
+	//Observations best_mean_obs_values;
+
+	Constraints constraints;
+
+	bool oe_drawn, dv_drawn;
 
 	//bool solve_old();
 	bool solve_new();
 
-	ParameterEnsemble calc_localized_upgrade_threaded(double cur_lam, unordered_map<string, pair<vector<string>, vector<string>>> &loc_map);
+	ParameterEnsemble fancy_solve_routine(double scale_val);
+	
+	Eigen::VectorXd get_obj_grad();
+
 
 	vector<int> run_ensemble(ParameterEnsemble &_pe, ObservationEnsemble &_oe, const vector<int> &real_idxs=vector<int>());
-	vector<ObservationEnsemble> run_lambda_ensembles(vector<ParameterEnsemble> &pe_lams, vector<double> &lam_vals, vector<double> &scale_vals);
+	void run_jacobian(Parameters& pars, Observations& obs);
+
+	vector<ObservationEnsemble> run_candidate_ensembles(vector<ParameterEnsemble> &dv_candidates, vector<double> &scale_vals);
 	
 	void report_and_save();
 	void save_mat(string prefix, Eigen::MatrixXd &mat);
-	bool initialize_pe(Covariance &cov);
-	bool initialize_oe(Covariance &cov);
-	void initialize_restart();
+	bool initialize_dv(Covariance &cov);
+	//bool initialize_oe(Covariance &cov);
+	bool initialize_restart();
 	void initialize_parcov();
 	void initialize_obscov();
+	void initialize_objfunc();
 	void drop_bad_phi(ParameterEnsemble &_pe, ObservationEnsemble &_oe, bool is_subset=false);
+	
+	void queue_chance_runs();
+	
 	template<typename T, typename A>
 	void message(int level, const string &_message, vector<T, A> _extras, bool echo=true);
 	void message(int level, const string &_message);
@@ -156,12 +174,10 @@ private:
 
 	void update_reals_by_phi(ParameterEnsemble &_pe, ObservationEnsemble &_oe);
 
-	vector<string> detect_prior_data_conflict();
-
 	void set_subset_idx(int size);
-	Eigen::MatrixXd get_Am(const vector<string> &real_names, const vector<string> &par_names);
-
-	void zero_weight_obs(vector<string>& obs_to_zero_weight, bool update_obscov=true,bool update_oe_base=true);
+	
+	void prep_ensembles();
+	void prep_fd();
 
 };
 

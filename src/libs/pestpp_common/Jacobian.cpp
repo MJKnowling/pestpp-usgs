@@ -315,7 +315,7 @@ bool Jacobian::process_runs(ParamTransformSeq &par_transform,
 		bool debug_fail)
 {
 	// calculate jacobian
-  base_sim_obs_names = run_manager.get_obs_name_vec();
+	base_sim_obs_names = run_manager.get_obs_name_vec();
 	vector<string> prior_info_name = prior_info.get_keys();
 	base_sim_obs_names.insert(base_sim_obs_names.end(), prior_info_name.begin(), prior_info_name.end());
 	std::vector<Eigen::Triplet<double> > triplet_list;

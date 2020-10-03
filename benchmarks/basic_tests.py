@@ -921,7 +921,7 @@ def mf6_v5_opt_stack_test():
         shutil.rmtree(m_d)
     pst = pyemu.Pst(os.path.join(t_d,"freyberg6_run_opt.pst"))
     m_d = os.path.join(model_d,"master_opt_stack")
-    pyemu.os_utils.start_workers(t_d, "pestpp-opt", "freyberg6_run_opt.pst", 
+    pyemu.os_utils.start_workers(t_d, exe_path.replace("-ies","-opt"), "freyberg6_run_opt.pst", 
                                  num_workers=15, master_dir=m_d,worker_root=model_d,
                                  port=port)
 
@@ -998,6 +998,64 @@ def cmdline_test():
         raise Exception("should have failed")
     
 
+def basic_sqp_test():
+    model_d = "mf6_freyberg"
+    local=True
+    if "linux" in platform.platform().lower() and "10par" in model_d:
+        #print("travis_prep")
+        #prep_for_travis(model_d)
+        local=False
+    
+    t_d = os.path.join(model_d,"template")
+    m_d = os.path.join(model_d,"master_sqp_fd")
+    if os.path.exists(m_d):
+        shutil.rmtree(m_d)
+    pst = pyemu.Pst(os.path.join(t_d,"freyberg6_run_opt.pst"))
+    pst.control_data.noptmax = 0
+    pst.write(os.path.join(t_d,"freyberg6_run_sqp.pst"))
+    pyemu.os_utils.run("{0} freyberg6_run_sqp.pst".format(exe_path.replace("-ies","-sqp")),cwd=t_d)
+
+    assert os.path.exists(os.path.join(t_d,"freyberg6_run_sqp.base.par"))
+    assert os.path.exists(os.path.join(t_d,"freyberg6_run_sqp.base.rei"))
+
+    pst.pestpp_options["sqp_num_reals"] = 10
+    pst.pestpp_options["opt_risk"] = 0.95
+    pst.pestpp_options["sqp_ensemble_gradient"] = False
+
+    pst.control_data.noptmax = -1
+    pst.write(os.path.join(t_d,"freyberg6_run_sqp.pst"))
+    pyemu.os_utils.start_workers(t_d, exe_path.replace("-ies","-sqp"), "freyberg6_run_sqp.pst", 
+                                 num_workers=15, master_dir=m_d,worker_root=model_d,
+                                 port=port)
+
+    assert os.path.exists(os.path.join(m_d,"freyberg6_run_sqp.0.jcb"))
+    jco = pyemu.Jco.from_binary(os.path.join(m_d,"freyberg6_run_sqp.0.jcb"))
+    print(jco.shape)
+   
+
+    m_d = os.path.join(model_d,"master_sqp_en")
+    pst.pestpp_options["sqp_ensemble_gradient"] = True
+    pst.control_data.noptmax = -1
+    pst.write(os.path.join(t_d,"freyberg6_run_sqp.pst"))
+    pyemu.os_utils.start_workers(t_d, exe_path.replace("-ies","-sqp"), "freyberg6_run_sqp.pst", 
+                                 num_workers=15, master_dir=m_d,worker_root=model_d,
+                                 port=port)
+
+    assert os.path.exists(os.path.join(m_d,"freyberg6_run_sqp.0.par.csv"))
+    df = pd.read_csv(os.path.join(m_d,"freyberg6_run_sqp.0.par.csv"),index_col=0)
+    assert df.shape == (pst.pestpp_options["sqp_num_reals"],pst.npar),str(df.shape)
+    assert os.path.exists(os.path.join(m_d,"freyberg6_run_sqp.0.obs.csv"))
+    df = pd.read_csv(os.path.join(m_d,"freyberg6_run_sqp.0.obs.csv"),index_col=0)
+    assert df.shape == (pst.pestpp_options["sqp_num_reals"],pst.nobs),str(df.shape)
+
+
+def start_workers():
+    model_d = "mf6_freyberg"
+    t_d = os.path.join(model_d,"template")
+    pyemu.os_utils.start_workers(t_d, exe_path.replace("-ies","-sqp"), "freyberg6_run_sqp.pst", 
+                                 num_workers=15,worker_root=model_d,
+                                 port=port)
+
 if __name__ == "__main__":
     
     #glm_long_name_test()
@@ -1016,6 +1074,10 @@ if __name__ == "__main__":
     #ext_stdcol_test()
     #mf6_v5_ies_test()
     #mf6_v5_sen_test()
+    #shutil.copy2(os.path.join("..","exe","windows","x64","Debug","pestpp-opt.exe"),os.path.join("..","bin","win","pestpp-opt.exe"))
     #mf6_v5_opt_stack_test()
     #mf6_v5_glm_test()
-    cmdline_test()
+    #cmdline_test()
+    shutil.copy2(os.path.join("..","exe","windows","x64","Debug","pestpp-sqp.exe"),os.path.join("..","bin","pestpp-sqp.exe"))
+    basic_sqp_test()
+    #start_workers()

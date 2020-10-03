@@ -578,7 +578,14 @@ PestppOptions::ARG_STATUS PestppOptions::assign_value_by_key(string key, const s
 
 	else if (key == "GLOBAL_OPT")
 	{
-		if (value == "DE") global_opt = OPT_DE;
+	if (value == "DE") global_opt = OPT_DE;
+	else if (value == "MOEA") global_opt = OPT_MOEA;
+	else
+		throw runtime_error(value + "is not a supported global optimization option");
+	}
+	else if (key == "MOEA_NAME")
+	{
+	convert_ip(value, moea_name);
 	}
 	else if (key == "DE_F")
 	{
@@ -971,12 +978,14 @@ PestppOptions::ARG_STATUS PestppOptions::assign_value_by_key(string key, const s
 		fill_tpl_zeros = pest_utils::parse_string_arg_to_bool(value);
 	}
 	
-	else if (!assign_value_by_key_continued(key, value))
-	{
 
-		//throw PestParsingError(line, "Invalid key word \"" + key +"\"");
+	else if ((!assign_value_by_key_continued(key, value)) && 
+	(!assign_value_by_key_sqp(key, value, org_value)) &&
+	(!assign_mou_value_by_key(key, value, org_value)))
+	{
 		return ARG_STATUS::ARG_NOTFOUND;
 	}
+
 	return ARG_STATUS::ARG_ACCEPTED;
 }
 
@@ -1023,6 +1032,85 @@ bool PestppOptions::assign_value_by_key_continued(const string& key, const strin
 	return false;
 }
 
+bool PestppOptions::assign_mou_value_by_key(const string& key, const string& value, const string& org_value)
+{
+	if (key == "MOU_ALGORITHM")
+	{
+		mou_algorithm = org_value;
+		return true;
+	}
+
+	else if (key == "MOU_POPULATION_SIZE")
+	{
+		convert_ip(value, mou_population_size);
+		return true;
+	}
+
+	else if (key == "MOU_DV_POPULATION_FILE")
+	{
+		mou_dv_population_file = org_value;
+		return true;
+	}
+	else if (key == "MOU_OBS_POPULATION_RESTART_FILE")
+	{
+		mou_obs_population_restart_file = org_value;
+		return true;
+	}
+
+	else if (key == "MOU_OBJECTIVES")
+	{
+	
+		mou_objectives.clear();
+		vector<string> tok;
+		tokenize(value, tok, ",");
+		for (const auto& obj : tok)
+		{
+			mou_objectives.push_back(upper_cp(obj));
+		}
+	}
+	
+	else if (key == "MOU_MAX_ARCHIVE_SIZE")
+	{
+		convert_ip(value, mou_max_archive_size);
+		return true;
+	}
+
+	else if (key == "OPT_CHANCE_POINTS")
+	{
+		opt_chance_points = value;
+		return true;
+	}
+
+	return false;
+}
+
+
+bool PestppOptions::assign_value_by_key_sqp(const string& key, const string& value, const string& org_value)
+{
+	if (key == "SQP_DV_EN")
+	{
+		sqp_dv_en = org_value;
+		return true;
+	}
+
+	else if (key == "SQP_RESTART_OBS_EN")
+	{
+		sqp_obs_restart_en = org_value;
+		return true;
+	}
+	else if (key == "SQP_NUM_REALS")
+	{
+		convert_ip(value, sqp_num_reals);
+		return true;
+	}
+	else if (key == "SQP_ENSEMBLE_GRADIENT")
+	{
+		sqp_ensemble_gradient = pest_utils::parse_string_arg_to_bool(value);
+		return true;
+	}
+	
+	return false;
+}
 
 void PestppOptions::summary(ostream& os) const
 {
@@ -1106,6 +1194,16 @@ void PestppOptions::summary(ostream& os) const
 		os << "de_max_gen: " << de_max_gen << endl;
 		os << "de_dither_f: " << de_dither_f << endl;
 	}
+
+	if (global_opt == OPT_MOEA)
+	{
+		os << "global_opt: MOEA" << endl;
+		os << "de_f: " << de_f << endl;
+		os << "de_cr: " << de_cr << endl;
+		os << "de_pop_size: " << de_npopulation << endl;
+		os << "de_max_gen: " << de_max_gen << endl;
+		os << "de_dither_f: " << de_dither_f << endl;
+	}
 	
 	os << endl << "...pestpp-swp options:" << endl;
 	os << "sweep_parameter_csv_file: " << sweep_parameter_csv_file << endl;
@@ -1139,7 +1237,37 @@ void PestppOptions::summary(ostream& os) const
 	os << "opt_direction: " << opt_direction << endl;
 	os << "opt_iter_tol: " << opt_iter_tol << endl;
 	os << "opt_recalc_fosm_every: " << opt_recalc_fosm_every << endl;
-	os << "opt_include_bnd_pi: " << opt_include_bnd_pi << endl;
+	os << "opt_chance_points: " << opt_chance_points << endl;
+	
+
+	os << endl << "...pestpp-sqp options:" << endl;
+	os << "sqp_dv_en: " << sqp_dv_en << endl;
+	os << "sqp_obs_restart_en: " << sqp_obs_restart_en << endl;
+	os << "sqp_num_reals: " << sqp_num_reals << endl;
+	os << "sqp_ensemble_gradient: " << sqp_ensemble_gradient << endl;
+
+	os << endl << "...pestpp-mou options:" << endl;
+	os << "mou_algorithm: " << mou_algorithm << endl;
+	os << "mou_population_size: " << mou_population_size << endl;
+	os << "mou_dv_population_file: " << mou_dv_population_file << endl;
+	os << "mou_obs_population_restart_file: " << mou_obs_population_restart_file << endl;
+	os << "mou_objectives: " << endl;
+	for (auto obj : mou_objectives)
+		os << obj << endl;
+	os << "mou_max_archive_size: " << mou_max_archive_size << endl;
+	
+
+	os << endl << "...pestpp-mou options:" << endl;
+	os << "mou_algorithm: " << mou_algorithm << endl;
+	os << "mou_population_size: " << mou_population_size << endl;
+	os << "mou_dv_population_file: " << mou_dv_population_file << endl;
+	os << "mou_obs_population_restart_file: " << mou_obs_population_restart_file << endl;
+	os << "mou_objectives: " << endl;
+	for (auto obj : mou_objectives)
+		os << obj << endl;
+	os << "mou_max_archive_size: " << mou_max_archive_size << endl;
+	
+
 
 	os << endl << "...pestpp-ies options:" << endl;
 	os << "ies_parameter_ensemble: " << ies_par_csv << endl;
@@ -1221,8 +1349,8 @@ void PestppOptions::set_defaults()
 	set_base_lambda_vec(vector<double>{ 0.1, 1.0, 10.0, 100.0, 1000.0 });
 	set_lambda_scale_vec(vector<double>{0.75, 1.0, 1.1});
 	set_global_opt(PestppOptions::GLOBAL_OPT::NONE);
-	set_de_cr(0.9);
-	set_de_f(0.8);
+	set_de_cr(0.6);
+	set_de_f(0.7);
 	set_de_dither_f(true);
 	set_de_npopulation(40);
 	set_de_max_gen(100);
@@ -1271,6 +1399,22 @@ void PestppOptions::set_defaults()
 	set_opt_stack_size(0);
 	set_opt_par_stack("");
 	set_opt_obs_stack("");
+	set_opt_chance_points("SINGLE");
+
+
+	set_sqp_dv_en("");
+	set_sqp_obs_restart_en("");
+	set_sqp_num_reals(50);
+	set_sqp_ensemble_gradient(true);
+
+	set_mou_algorithm("NSGA2");
+
+	set_mou_population_size(100);
+	set_mou_dv_population_file("");
+	set_mou_obs_population_restart_file("");
+	set_mou_objectives(vector<string>());
+	set_mou_max_archive_size(5000);
+	
 
 	set_ies_par_csv("");
 	set_ies_obs_csv("");
@@ -1651,4 +1795,20 @@ double draw_standard_normal(std::mt19937& rand_gen)
 	
 	double r = sqrt(-2.0 * log(v1));
 	return r * sin(2.0 * pi * v2);
+}
+
+vector<double> uniform_draws(int num_reals, double lower_bound, double upper_bound, std::mt19937& rand_gen)
+{
+	double scale = 1.0 / (rand_gen.max() - rand_gen.min() + 1.0);
+	vector<double> vals;
+	double bscale = upper_bound - lower_bound;
+	double v1;
+	for (int i = 0; i < num_reals; i++)
+	{
+		v1 = (rand_gen() - rand_gen.min()) * scale;
+		v1 = lower_bound + (v1 * bscale);
+		vals.push_back(v1);
+	}
+	return vals;
+	
 }
