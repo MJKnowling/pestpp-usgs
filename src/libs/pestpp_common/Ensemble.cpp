@@ -524,7 +524,7 @@ pair<Covariance,Covariance> Ensemble::get_empirical_cov_matrices(FileManager* fi
 	return pair<Covariance,Covariance> (rcov,rcov_shrunk);
 }
 
-Covariance Ensemble::get_diagonal_cov_matrix()
+Covariance Ensemble::get_diagonal_cov_matrix(bool forgive, bool std_instead)
 {
 	//build an empirical diagonal covariance matrix from the realizations
 
@@ -533,18 +533,30 @@ Covariance Ensemble::get_diagonal_cov_matrix()
 	double var;
 	vector<Eigen::Triplet<double>> triplets;
 	double num_reals = double(reals.rows());
+	stringstream ss;
 	for (int j = 0; j < var_names.size(); j++)
 	{
 		//calc variance for this var_name
-		var = (reals.col(j).cwiseProduct(reals.col(j))).sum() / num_reals;
+		var = (meandiff.col(j).cwiseProduct(meandiff.col(j))).sum() / num_reals;
 		//if (var == 0.0)
 		if (var <=1.0e-30)
 		{
-			stringstream ss;
-			ss << "invalid variance for ensemble variable: " << var_names[j] << ": " << var;
-			throw_ensemble_error(ss.str());
+			ss.str("");
+			ss << "invalid variance for ensemble variable: " << var_names[j] << ": " << var << " using 1.0e-30" << endl;
+			
+			if (forgive)
+			{
+				cout << ss.str();
+				var = 1.0e+30;
+			}
+			else
+			{
+				throw_ensemble_error(ss.str());
+			}
 
 		}
+		if (std_instead)
+			var = sqrt(var);
 		triplets.push_back(Eigen::Triplet<double>(j, j, var));
 	}
 
@@ -1299,6 +1311,49 @@ void Ensemble::append_other_rows(Ensemble &other)
 	}
 	real_names = new_real_names;
 }
+
+void Ensemble::append_other_cols(Ensemble& other)
+{
+	//append rows to the end of reals
+	if (other.shape().first != shape().first)
+		throw_ensemble_error("append_other_cols(): different number of real_names in other");
+	vector<string> probs;
+	set<string> rnames(real_names.begin(), real_names.end());
+	//vector<string>::iterator start = var_names.begin(), end = var_names.end();
+	set<string>::iterator end = rnames.end();
+	for (auto& rname : other.get_real_names())
+		//if (find(start, end, vname) == end)
+		if (rnames.find(rname) == end)
+			probs.push_back(rname);
+	if (probs.size() > 0)
+		throw_ensemble_error("append_other_cols(): the following other::real_names not in this::real_names: ", probs);
+	//start = real_names.begin();
+	//end = real_names.end();
+	set<string> vnames(var_names.begin(), var_names.end());
+	end = vnames.end();
+	for (auto& vname : other.get_var_names())
+		//if (find(start, end, rname) != end)
+		if (vnames.find(vname) != end)
+			probs.push_back(vname);
+	if (probs.size() > 0)
+		throw_ensemble_error("append_other_cols(): the following other::var_names are also in this::var_names: ", probs);
+	vector<string> new_var_names = var_names;
+	for (auto& vname : other.get_var_names())
+	{
+		new_var_names.push_back(vname);
+		//org_real_names.push_back(rname);
+	}
+	reals.conservativeResize(real_names.size(), new_var_names.size());
+
+	int jother = 0;
+	for (int j = var_names.size();j< new_var_names.size(); j++)
+	{
+		reals.col(j) = other.get_eigen_ptr()->col(jother);
+		jother++;
+	}
+	var_names = new_var_names;
+}
+
 
 void Ensemble::append(string real_name, const Transformable &trans)
 {
@@ -2279,12 +2334,12 @@ void ParameterEnsemble::save_fixed()
 		}
 	}
 	// add the "base" if its not in the real names already
-	if (find(real_names.begin(), real_names.end(), base_name) == real_names.end())
+	if (find(real_names.begin(), real_names.end(), BASE_REAL_NAME) == real_names.end())
 	{
 		Parameters pars = pest_scenario_ptr->get_ctl_parameters();
 		for (auto fname : fixed_names)
 		{
-			pair<string, string> key(base_name, fname);
+			pair<string, string> key(BASE_REAL_NAME, fname);
 			fixed_map[key] = pars[fname];
 		}
 	}
@@ -2553,6 +2608,42 @@ void ParameterEnsemble::to_csv_by_vars(ofstream &csv)
 	}
 }
 
+ParameterEnsemble ParameterEnsemble::get_subset_of_vars(vector<string>& _var_names)
+{
+	set<string> s_var_names(var_names.begin(), var_names.end());
+	vector<string> missing;
+	if (_var_names.size() == 0)
+		throw_ensemble_error("get_subset_of_vars(): request var names is empty");
+
+	for (auto var_name : _var_names)
+	{
+		if (s_var_names.find(var_name) == s_var_names.end())
+			missing.push_back(var_name);
+	}
+	if (missing.size() > 0)
+	{
+		throw_ensemble_error("get_subset_of_vars(): the following requested var_names not found:", missing);
+	}
+
+	update_var_map();
+	map<string, int> _var_map = get_var_map();
+
+	Eigen::MatrixXd _reals(real_names.size(), _var_names.size());
+	_reals.setZero();
+	int i = 0;
+	for (auto var_name : _var_names)
+	{
+		_reals.col(i) = reals.col(var_map[var_name]);
+		i++;
+	}
+
+	ParameterEnsemble pe = ParameterEnsemble(pest_scenario_ptr, rand_gen_ptr, _reals, real_names, _var_names);
+	pe.set_trans_status(tstat);
+
+	return pe;
+}
+
+
 void ParameterEnsemble::to_csv_by_reals(ofstream &csv)
 {
 	vector<string> names = pest_scenario_ptr->get_ctl_ordered_par_names();
@@ -2624,10 +2715,12 @@ void ParameterEnsemble::transform_ip(transStatus to_tstat)
 	if ((to_tstat == transStatus::NUM) && (tstat == transStatus::CTL))
 	{
 		Parameters pars = pest_scenario_ptr->get_ctl_parameters();
+		par_transform.ctl2numeric_ip(pars);
 		vector<string> adj_par_names = pest_scenario_ptr->get_ctl_ordered_adj_par_names();
 		Eigen::MatrixXd new_reals = Eigen::MatrixXd(shape().first, adj_par_names.size());
 		for (int ireal = 0; ireal < reals.rows(); ireal++)
 		{
+			par_transform.numeric2ctl_ip(pars);
 			pars.update_without_clear(var_names, reals.row(ireal));
 			par_transform.ctl2numeric_ip(pars);
 			assert(pars.size() == adj_par_names.size());
@@ -2638,14 +2731,32 @@ void ParameterEnsemble::transform_ip(transStatus to_tstat)
 		tstat = to_tstat;
 
 	}
+	else if ((to_tstat == transStatus::CTL) && (tstat == transStatus::NUM))
+	{
+		Parameters pars = pest_scenario_ptr->get_ctl_parameters();
+		par_transform.ctl2numeric_ip(pars);
+		vector<string> par_names = pest_scenario_ptr->get_ctl_ordered_par_names();
+		Eigen::MatrixXd new_reals = Eigen::MatrixXd(shape().first, par_names.size());
+		for (int ireal = 0; ireal < reals.rows(); ireal++)
+		{		
+			pars.update_without_clear(var_names, reals.row(ireal));
+			par_transform.numeric2ctl_ip(pars);
+			assert(pars.size() == par_names.size());
+			new_reals.row(ireal) = pars.get_data_eigen_vec(par_names);
+			par_transform.ctl2numeric_ip(pars);
+		}
+		reals = new_reals;
+		var_names = par_names;
+		tstat = to_tstat;
+	}
 	else
-		throw_ensemble_error("ParameterEnsemble::transform_ip() only CTL to NUM implemented");
+		throw_ensemble_error("ParameterEnsemble::transform_ip() only CTL to NUM and NUM to CTL implemented");
 
 }
-Covariance ParameterEnsemble::get_diagonal_cov_matrix()
+Covariance ParameterEnsemble::get_diagonal_cov_matrix(bool forgive, bool std_instead)
 {
 	transform_ip(transStatus::NUM);
-	return Ensemble::get_diagonal_cov_matrix();
+	return Ensemble::get_diagonal_cov_matrix(forgive, std_instead);
 }
 
 ObservationEnsemble::ObservationEnsemble(Pest *_pest_scenario_ptr, std::mt19937* _rand_gen_ptr): Ensemble(_pest_scenario_ptr, _rand_gen_ptr)
@@ -2663,6 +2774,75 @@ ObservationEnsemble::ObservationEnsemble(Pest *_pest_scenario_ptr, std::mt19937*
 	var_names = _var_names;
 	real_names = _real_names;
 }
+
+ObservationEnsemble ObservationEnsemble::get_subset_of_vars(vector<string>& _var_names)
+{
+	set<string> s_var_names(var_names.begin(), var_names.end());
+	vector<string> missing;
+	if (_var_names.size() == 0)
+		throw_ensemble_error("get_subset_of_vars(): request var names is empty");
+
+	for (auto var_name : _var_names)
+	{
+		if (s_var_names.find(var_name) == s_var_names.end())
+			missing.push_back(var_name);
+	}
+	if (missing.size() > 0)
+	{
+		throw_ensemble_error("get_subset_of_vars(): the following requested var_names not found:", missing);
+	}
+
+	update_var_map();
+	map<string, int> _var_map = get_var_map();
+
+	Eigen::MatrixXd _reals(real_names.size(), _var_names.size());
+	_reals.setZero();
+	int i = 0;
+	for (auto var_name : _var_names)
+	{
+		_reals.col(i) = reals.col(var_map[var_name]);
+		i++;
+	}
+	return ObservationEnsemble(pest_scenario_ptr, rand_gen_ptr, _reals, real_names, _var_names);
+}
+
+void ObservationEnsemble::from_prior_info(ParameterEnsemble& pe, vector<string> pi_names)
+{
+
+	PriorInformation pi = pest_scenario_ptr->get_prior_info();
+	vector<string> missing;
+	for (auto pi_name : pi_names)
+		if (pi.find(pi_name) == pi.end())
+			missing.push_back(pi_name);
+
+	if (missing.size() > 0)
+		throw_ensemble_error("append_prior_info(): the following prior info names not found:", missing);
+	if (pi_names.size() == 0)
+	{
+		pi_names = pest_scenario_ptr->get_ctl_ordered_pi_names();
+	}
+	if (pi_names.size() == 0)
+		throw_ensemble_error("append_prior_info(): no pi_names found");
+	reals.resize(pe.shape().first, pi_names.size());
+	reals.setZero();
+	Parameters pars = pest_scenario_ptr->get_ctl_parameters();
+	pe.transform_ip(ParameterEnsemble::transStatus::CTL);
+	vector<string> pe_names = pe.get_var_names();
+	Eigen::VectorXd pe_vec;
+	pair<double, double> sim_res;
+	for (int i = 0; i < pe.shape().first; i++)
+	{
+		pe_vec = pe.get_eigen_ptr()->row(i);
+		pars.update_without_clear(pe_names, pe_vec);
+		for (int j = 0; j < pi_names.size(); j++)
+		{
+			sim_res = pi.get_pi_rec_ptr(pi_names[j]).calc_sim_and_resid(pars);
+			reals(i, j) = sim_res.first;
+		}
+	}
+	real_names = pe.get_real_names();
+	var_names = pi_names;
+}	
 
 
 void ObservationEnsemble::initialize_without_noise(int num_reals)

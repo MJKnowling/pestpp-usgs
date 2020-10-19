@@ -53,7 +53,7 @@ public:
 	virtual void solve_ip(Eigen::SparseMatrix<double>& A, Eigen::VectorXd &Sigma, Eigen::SparseMatrix<double>& U, Eigen::SparseMatrix<double>& VT, Eigen::VectorXd &Sigma_trunc);
 	virtual void solve_ip(Eigen::SparseMatrix<double>& A, Eigen::VectorXd &Sigma, Eigen::SparseMatrix<double>& U, Eigen::SparseMatrix<double>& VT, Eigen::VectorXd &Sigma_trunc, double _eigen_thres);
 	virtual SVD_EIGEN *clone() const{ return new SVD_EIGEN(*this); }
-	virtual void solve_ip(Eigen::MatrixXd& A, Eigen::MatrixXd &Sigma, Eigen::MatrixXd& U, Eigen::MatrixXd& VT, double _eigen_thres, double _max_sing);
+	virtual void solve_ip(Eigen::MatrixXd& A, Eigen::MatrixXd &Sigma, Eigen::MatrixXd& U, Eigen::MatrixXd& V, double _eigen_thres, double _max_sing);
 
 	virtual ~SVD_EIGEN(void) {}
 };
@@ -69,11 +69,14 @@ public:
 	virtual void solve_ip(Eigen::SparseMatrix<double>& A, Eigen::VectorXd &Sigma, Eigen::SparseMatrix<double>& U,
 		Eigen::SparseMatrix<double>& VT, Eigen::VectorXd &Sigma_trunc, double _eigen_thres);
 	virtual void solve_ip(Eigen::MatrixXd& A, Eigen::MatrixXd &Sigma, Eigen::MatrixXd& U,
-		Eigen::MatrixXd& V, double _eigen_thres, int _max_sing);
+		Eigen::MatrixXd& VT, double _eigen_thres, int _max_sing);
 	virtual SVD_REDSVD *clone() const { return new SVD_REDSVD(*this); }
 	virtual void solve_ip(Eigen::MatrixXd& A, Eigen::MatrixXd &Sigma, Eigen::MatrixXd& U,
-		Eigen::MatrixXd& V);
+		Eigen::MatrixXd& VT);
 	virtual ~SVD_REDSVD(void) {}
+	
+	Eigen::MatrixXd get_pseudo_inv(Eigen::MatrixXd A, double _eigen_thres, int _max_sing);
+	Eigen::SparseMatrix<double> get_pseudo_inv(Eigen::SparseMatrix<double> A, double _eigen_thres, int _max_sing);
 };
 
 #endif //SVDPACKAGE_H_

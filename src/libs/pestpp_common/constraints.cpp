@@ -30,7 +30,7 @@ OptObjFunc::OptObjFunc(Pest& _pest_scenario, FileManager* _file_mgr_ptr, Perform
 
 void OptObjFunc::update_coef_map_from_jacobian(Jacobian& jco)
 {
-	if (!use_obj_obs)
+	if (!objtype == objType::OBS)
 		return;
 
 	obj_func_coef_map.clear();
@@ -38,9 +38,9 @@ void OptObjFunc::update_coef_map_from_jacobian(Jacobian& jco)
 	vector<string> pnames = jco.get_base_numeric_par_names();
 	set<string> sdecvar(dv_names.begin(), dv_names.end());
 
-	int idx = find(onames.begin(), onames.end(), obj_obs) - onames.begin();
+	int idx = find(onames.begin(), onames.end(), obj_name) - onames.begin();
 	if (idx >= onames.size())
-		throw_optobjfunc_error("obj function obs name '" + obj_obs +"' not found in jco row names, #sad");
+		throw_optobjfunc_error("obj function obs name '" + obj_name +"' not found in jco row names, #sad");
 	Eigen::VectorXd vec = Eigen::VectorXd(jco.get_matrix_ptr()->row(idx));
 	for (int i = 0; i < vec.size(); i++)
 	{
@@ -53,11 +53,11 @@ void OptObjFunc::update_coef_map_from_jacobian(Jacobian& jco)
 double OptObjFunc::get_obj_func_value(Parameters& pars, Observations& obs)
 {
 	double obj_val = 0.0;
-	if (use_obj_obs)
+	if (objtype == objType::OBS)
 
 	{
 		if (obj_func_coef_map.size() == 0)
-			obj_val = obs.get_rec(obj_obs);
+			obj_val = obs.get_rec(obj_name);
 		else
 		{
 			for (auto dv_name : dv_names)
@@ -66,15 +66,16 @@ double OptObjFunc::get_obj_func_value(Parameters& pars, Observations& obs)
 			}
 		}
 	}
-	else if (obj_func_coef_map.size() == 0)
-		throw_optobjfunc_error("get_obj_func_value: not using observation-based objective and obj coef map is empty");
-	else
+	else if (objtype == objType::PI)
 	{
 		for (auto dv_name : dv_names)
 		{
 			obj_val += pars.get_rec(dv_name) * obj_func_coef_map[dv_name];
 		}
 	}
+	else if (obj_func_coef_map.size() == 0)
+		throw_optobjfunc_error("get_obj_func_value: not using observation-based or prior-info-based objective and obj coef map is empty");
+	
 	return obj_val;
 }
 
@@ -83,10 +84,14 @@ void OptObjFunc::report()
 	ofstream& f_rec = file_mgr_ptr->rec_ofstream();
 	map<string, double>::iterator end = obj_func_coef_map.end();
 	vector<string> missing;
-	if (use_obj_obs)
-		f_rec << "objective function coefficients defined by observation: " << pest_scenario.get_pestpp_options().get_opt_obj_func() << endl;
+	if (objtype == objType::OBS)
+		f_rec << "objective function coefficients defined by observation: " << obj_name << endl;
 	else
 	{
+		if (objtype == objType::PI)
+			f_rec << "objective function coefficients defined by prior information equation: " << obj_name << endl;
+		else if (objtype == objType::FILE)
+			f_rec << "objective function coefficients defined by file: " << pest_scenario.get_pestpp_options().get_opt_obj_func() << endl;
 		f_rec << "  ---  objective function coefficients  ---  " << endl;
 		vector<string> missing;
 		ofstream& f_rec = file_mgr_ptr->rec_ofstream();
@@ -120,6 +125,20 @@ void OptObjFunc::report()
 	}
 }
 
+const string OptObjFunc::get_obj_name()
+{
+	if ((objtype == objType::OBS) || (objtype == objType::PI))
+	{
+		if (obj_name.size() == 0)
+			throw_optobjfunc_error("get_obj_name(): name is empty");
+		return obj_name;
+	}
+	else
+	{
+		throw_optobjfunc_error("get_obj_name(): objType must be OBS or PI");
+	}
+}
+
 void OptObjFunc::throw_optobjfunc_error(string message)
 {
 	string error_message = "error in sequentialLP process: " + message;
@@ -129,7 +148,7 @@ void OptObjFunc::throw_optobjfunc_error(string message)
 	throw runtime_error(error_message);
 }
 
-void OptObjFunc::initialize(vector<string> _constraint_names, vector<string> _dv_names)
+void OptObjFunc::initialize(vector<string> _obs_constraint_names, vector<string> _dv_names)
 {
 	//initialize the objective function
 	obj_func_str = pest_scenario.get_pestpp_options().get_opt_obj_func();
@@ -138,24 +157,24 @@ void OptObjFunc::initialize(vector<string> _constraint_names, vector<string> _dv
 	ofstream& f_rec = file_mgr_ptr->rec_ofstream();
 
 	dv_names = _dv_names;
-	constraint_names = _constraint_names;
+	obs_constraint_names = _obs_constraint_names;
 
 	//check if the obj_str is an observation
-	use_obj_obs = false;
+	objtype = objType::UNKNOWN;
 	if (pest_scenario.get_ctl_observations().find(obj_func_str) != pest_scenario.get_ctl_observations().end())
 	{
-		use_obj_obs = true;
-		obj_obs = obj_func_str;
+		obj_name = obj_func_str;
+		objtype = objType::OBS;
 		//check
-		set<string> names(constraint_names.begin(), constraint_names.end());
-		if (names.find(obj_obs) != names.end())
+		set<string> names(obs_constraint_names.begin(), obs_constraint_names.end());
+		if (names.find(obj_name) != names.end())
 		{
 			throw runtime_error("objective function obs is a constraint, #sad");
 		}
 		names.clear();
 		vector<string> cnames = pest_scenario.get_ctl_ordered_nz_obs_names();
 		names.insert(cnames.begin(), cnames.end());
-		if (names.find(obj_obs) != names.end())
+		if (names.find(obj_name) != names.end())
 		{
 			throw runtime_error("objective function obs has non-zero weight and chance constraints are active");
 		}
@@ -169,12 +188,15 @@ void OptObjFunc::initialize(vector<string> _constraint_names, vector<string> _dv
 			f_rec << " warning: no ++opt_objective_function-->forming a generic objective function (1.0 coef for each decision var)" << endl;
 			for (auto& name : dv_names)
 				obj_func_coef_map[name] = 1.0;
+			objtype = objType::GENERIC;
 		}
 
 		//or if it is a prior info equation
 		else if (pest_scenario.get_prior_info().find(obj_func_str) != pest_scenario.get_prior_info().end())
 		{
+			obj_name = obj_func_str;
 			obj_func_coef_map = pest_scenario.get_prior_info().get_pi_rec_ptr(obj_func_str).get_atom_factors();
+			objtype = objType::PI;
 			//throw_sequentialLP_error("prior-information-based objective function not implemented");
 		}
 		else
@@ -185,6 +207,7 @@ void OptObjFunc::initialize(vector<string> _constraint_names, vector<string> _dv
 				throw_optobjfunc_error("unrecognized ++opt_objective_function arg: " + obj_func_str);
 			else
 				obj_func_coef_map = pest_utils::read_twocol_ascii_to_map(obj_func_str);
+			objtype = objType::FILE;
 		}
 
 
@@ -1583,6 +1606,9 @@ void Constraints::process_stack_runs(RunManagerAbstract* run_mgr_ptr, int iter)
 	}
 	else
 	{
+		//no runs to process...
+		if (stack_pe_run_map.size() == 0)
+			return;
 		pfm.log_event("processing stack runs");
 		stack_info = process_stack_runs("", iter, stack_pe_run_map, run_mgr_ptr, true);
 		if (stack_info.first.size() > 0)

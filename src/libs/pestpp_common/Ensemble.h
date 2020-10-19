@@ -16,6 +16,7 @@
 #include "PerformanceLog.h"
 
 
+const string BASE_REAL_NAME = "BASE";
 
 class Ensemble
 {
@@ -66,10 +67,11 @@ public:
 
 	void append_other_rows(Ensemble &other);
 	void append_other_rows(const vector<string>& _real_names, Eigen::MatrixXd& _reals);
+	void append_other_cols(Ensemble& other);
 	void append(string real_name, const Transformable &trans);
 	void replace(int idx, const Transformable &trans, string real_name="");
 
-	Covariance get_diagonal_cov_matrix();
+	Covariance get_diagonal_cov_matrix(bool forgive=false, bool std_instead=false);
 	pair<Covariance,Covariance> get_empirical_cov_matrices(FileManager* file_manager_ptr);
 	void reorder(const vector<string> &_real_names, const vector<string> &_var_names, bool update_org_real_names=false);
 	void drop_rows(const vector<int> &row_idxs);
@@ -104,7 +106,6 @@ protected:
 	//ObjectiveFunc *obj_func_ptr;
 	//OutputFileWriter &output_file_writer;
 	//PerformanceLog *performance_log;
-	string base_name = "BASE";
 	Eigen::MatrixXd reals;
 	vector<string> var_names;
 	vector<string> real_names;	
@@ -133,6 +134,9 @@ public:
 
 	ParameterEnsemble() { ; }
 	ParameterEnsemble zeros_like();
+
+	ParameterEnsemble get_subset_of_vars(vector<string>& _var_names);
+
 	void set_zeros();
 	//ParameterEnsemble get_new(const vector<string> &_real_names, const vector<string> &_var_names);
 
@@ -156,7 +160,7 @@ public:
 
 	void draw(int num_reals, Parameters par, Covariance &cov, PerformanceLog *plog, int level, ofstream& frec);
 	void draw_uniform(int num_reals, vector<string> par_names, PerformanceLog* plog, int level, ofstream& frec);
-	Covariance get_diagonal_cov_matrix();
+	Covariance get_diagonal_cov_matrix(bool forgive=false, bool std_instead=false);
 	void to_binary(string filename);
 
 private:
@@ -179,6 +183,8 @@ public:
 	ObservationEnsemble(Pest *_pest_scenario_ptr, std::mt19937* rand_gen_ptr, Eigen::MatrixXd _reals, vector<string> _real_names, vector<string> _var_names);
 
 	ObservationEnsemble() { ; }
+	ObservationEnsemble get_subset_of_vars(vector<string>& _var_names);
+
 	void to_binary(string filename) { Ensemble::to_binary(filename, true); }
 	void update_from_obs(int row_idx, Observations &obs);
 	void update_from_obs(string real_name, Observations &obs);
@@ -190,6 +196,7 @@ public:
 	void draw(int num_reals, Covariance &cov, PerformanceLog *plog, int level, ofstream& frec);
 	void initialize_without_noise(int num_reals);
 	//ObservationEnsemble get_mean_diff();
+	void from_prior_info(ParameterEnsemble& pe, vector<string> pi_names = vector<string>());
 };
 
 class DrawThread

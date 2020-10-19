@@ -93,14 +93,17 @@ private:
 	ParChangeSummarizer pcs;
 	Covariance parcov, obscov;
 	chancePoints chancepoints;
-	string obj_func_str;
-	string obj_obs;
-	string obj_sense;
-	bool use_obj_obs;
-	map<string, double> obj_func_coef_map;
+	//string obj_func_str;
+	//string obj_obs;
+	//string obj_sense;
+	//bool use_obj_obs;
+	//map<string, double> obj_func_coef_map;
 	bool use_ensembles;
 
-	Jacobian_1to1 jco;
+	Mat jco_mat;
+	Mat hessian;
+
+	map<int, Eigen::VectorXd> iteration_obj_grad_map;
 
 	string base_name = "BASE"; //this is also defined in Ensemble
 
@@ -134,17 +137,34 @@ private:
 
 	Constraints constraints;
 
+	OptObjFunc optobjfunc;
+
 	bool oe_drawn, dv_drawn;
 
-	//bool solve_old();
 	bool solve_new();
 
 	ParameterEnsemble fancy_solve_routine(double scale_val);
-	
-	Eigen::VectorXd get_obj_grad();
 
+	//get the obj func grad, handling FD and ensemble cases
+	Eigen::VectorXd get_obj_grad_vec();
+
+	//update the hessian using some fanciness
+	void lbfgs_hess_update();
+
+	Eigen::VectorXd get_solve_eqp();
+
+	vector<string> get_active_set();
+
+	bool meets_wolfe(Eigen::VectorXd& obj_grad_vec);
+
+	Covariance get_decvar_empirical_cov(ParameterEnsemble& _dv);
+	
+	void fill_empirical_jco(ParameterEnsemble& _dv, ObservationEnsemble& _oe);
+	
+	void cov_matrix_adapt(Eigen::SparseMatrix<double>& decvar_emp_cov);
 
 	vector<int> run_ensemble(ParameterEnsemble &_pe, ObservationEnsemble &_oe, const vector<int> &real_idxs=vector<int>());
+	
 	void run_jacobian(Parameters& pars, Observations& obs);
 
 	vector<ObservationEnsemble> run_candidate_ensembles(vector<ParameterEnsemble> &dv_candidates, vector<double> &scale_vals);
@@ -156,7 +176,7 @@ private:
 	bool initialize_restart();
 	void initialize_parcov();
 	void initialize_obscov();
-	void initialize_objfunc();
+	//void initialize_objfunc();
 	void drop_bad_phi(ParameterEnsemble &_pe, ObservationEnsemble &_oe, bool is_subset=false);
 	
 	void queue_chance_runs();

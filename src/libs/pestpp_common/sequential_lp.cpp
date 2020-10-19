@@ -109,7 +109,7 @@ void sequentialLP::initial_report()
 	
 	optobjfunc.report();
 
-	if (!optobjfunc.get_use_obs_obj())
+	if (optobjfunc.get_objtype() != OptObjFunc::objType::OBS)
 	{
 		obj_init = optobjfunc.get_obj_func_value(initial_pars,current_constraints_sim);
 		f_rec << endl << "  ---  objective function value (using initial dec var values): " << obj_init << endl << endl;
@@ -1133,7 +1133,7 @@ void sequentialLP::iter_presolve()
 		}
 	}
 
-	if (optobjfunc.get_use_obs_obj())
+	if (optobjfunc.get_objtype() == OptObjFunc::objType::OBS)
 	{
 		optobjfunc.update_coef_map_from_jacobian(jco);
 		f_rec << "  ---  objective function coefficients for iteration " << slp_iter << "  ---  " << endl;

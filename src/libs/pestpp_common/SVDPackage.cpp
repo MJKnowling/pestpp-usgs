@@ -89,6 +89,9 @@ void SVD_REDSVD::solve_ip(Eigen::MatrixXd& A, Eigen::MatrixXd &Sigma, Eigen::Mat
 			break;
 		}
 	}
+	if (num_sing_used == 0)
+		throw std::runtime_error("RedSVD::solve_ip() failed: no singular components retained");
+
 	std::stringstream ss;
 	ss << "triming REDSVD components to " << num_sing_used << "elements";
 	if (performance_log)
@@ -140,6 +143,26 @@ void SVD_REDSVD::solve_ip(Eigen::MatrixXd& A, Eigen::MatrixXd &Sigma, Eigen::Mat
 }
 
 
+
+Eigen::MatrixXd SVD_REDSVD::get_pseudo_inv(Eigen::MatrixXd A, double _eigen_thres, int _max_sing)
+{
+	Eigen::MatrixXd V, S, U, inv;
+	solve_ip(A, S, U, V, _eigen_thres, _max_sing);
+	S.array() = 1.0 / S.array();
+	inv = V * S.asDiagonal() * U.transpose();
+	return inv;
+}
+
+Eigen::SparseMatrix<double> SVD_REDSVD::get_pseudo_inv(Eigen::SparseMatrix<double> A, double _eigen_thres, int _max_sing)
+{
+	Eigen::SparseMatrix<double> Vt,U,inv;
+	Eigen::VectorXd s, s_trunc;
+	solve_ip(A,s, U, Vt, s_trunc);
+	s.array() = 1.0 / s.array();
+	inv = Vt.transpose() * s.asDiagonal() * U.transpose();
+	return inv;
+}
+
 void SVD_REDSVD::solve_ip(Eigen::SparseMatrix<double>& A, Eigen::VectorXd &Sigma, Eigen::SparseMatrix<double>& U,
 	Eigen::SparseMatrix<double>& VT, Eigen::VectorXd &Sigma_trunc, double _eigen_thres)
 {
@@ -168,6 +191,10 @@ void SVD_REDSVD::solve_ip(Eigen::SparseMatrix<double>& A, Eigen::VectorXd &Sigma
 			break;
 		}
 	}
+
+	if (num_sing_used == 0)
+		throw std::runtime_error("RedSVD::solve_ip() failed: no singular components retained");
+
 	std::stringstream ss;
 	ss << "triming REDSVD components to " << num_sing_used << "elements";
 	if (performance_log)
@@ -221,6 +248,10 @@ void SVD_EIGEN::solve_ip(Eigen::MatrixXd& A, Eigen::MatrixXd &Sigma, Eigen::Matr
 			break;
 		}
 	}
+
+	if (num_sing_used == 0)
+		throw std::runtime_error("RedSVD::solve_ip() failed: no singular components retained");
+
 	std::stringstream ss;
 	ss << "triming REDSVD components to " << num_sing_used << "elements";
 	performance_log->log_event(ss.str());
@@ -278,6 +309,10 @@ void SVD_EIGEN::solve_ip(Eigen::SparseMatrix<double>& A, Eigen::VectorXd &Sigma,
 			break;
 		}
 	}
+
+	if (num_sing_used == 0)
+		throw std::runtime_error("RedSVD::solve_ip() failed: no singular components retained");
+
 	//Trim the Matricies based on the number of singular values to be used
 	Sigma = Sigma_full.head(num_sing_used);
 	Sigma_trunc = Sigma_full.tail(Sigma_full.size() - num_sing_used);
